@@ -45,7 +45,7 @@ class Licence(Base):
     __tablename__ = "licences"
 
     id = Column(Integer, primary_key=True, index=True)
-    client_id = Column(Integer, ForeignKey('clients.id'))
+    client_id = Column(Integer)
     status = Column(Enum(Status))
     date_begin = Column(DateTime, index=True)
     date_end = Column(DateTime, index=True)
