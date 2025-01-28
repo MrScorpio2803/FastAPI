@@ -22,7 +22,7 @@ class ClientBase(BaseModel):
     num_phone: Annotated[
         str, Path(title="The phone of the contact person of this company", min_length=11, max_length=12)]
     status: Annotated[str, Path(title="The status(active or inactive) of the contact person of this company")]
-    count_licence: Annotated[int, Path(title='The count of licences of contact person of this company')]
+    count_licence: Annotated[int, Path(title='The count of licences of contact person of this company', ge=0)]
     date_registration: Annotated[datetime, Path(title='The date registration of contact person of this company')]
     description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
     role: Annotated[
@@ -63,6 +63,10 @@ class ClientCreate(BaseModel):
     description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
     role: Annotated[
         str, Path(title='The role for example administrator or moderator of contact person of this company')]
+
+
+class ClientEdit(ClientBase):
+    pass
 
 
 class ClientResponse(ClientBase):
