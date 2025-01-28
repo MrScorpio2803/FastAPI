@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
@@ -45,9 +47,20 @@ class Licence(Base):
     __tablename__ = "licences"
 
     id = Column(Integer, primary_key=True, index=True)
-    client_id = Column(Integer, ForeignKey('clients.id'))
+    client_id = Column(Integer)
     status = Column(Enum(Status))
-    date_begin = Column(DateTime, index=True)
+    date_begin = Column(DateTime, index=True, default=datetime.now)
     date_end = Column(DateTime, index=True)
     service_id = Column(Integer, ForeignKey('services.id'))
     service = relationship('Service', back_populates='licences')
+
+
+class History(Base):
+    __tablename__ = "history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    licence_id = Column(Integer, ForeignKey('licences.id'))
+    prev_status = Column(Enum(Status))
+    next_status = Column(Enum(Status))
+    date = Column(DateTime, index=True)
+    client_id = Column(Integer, ForeignKey('clients.id'))

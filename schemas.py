@@ -52,8 +52,17 @@ class ObjectResponse(ObjectBase):
         from_attributes = True
 
 
-class ClientCreate(ClientBase):
-    pass
+class ClientCreate(BaseModel):
+    nameCompany: Annotated[str, Path(title="The name of the company of this client")]
+    tin: Annotated[str, Path(title="The tin of the company of this client", min_length=10, max_length=10)]
+    contact: Annotated[str, Path(title="The contact person of the company of this company")]
+    email: Annotated[EmailStr, Path(title="The email of the contact person of this company")]
+    num_phone: Annotated[
+        str, Path(title="The phone of the contact person of this company", min_length=11, max_length=12)]
+    date_registration: Annotated[datetime, Path(title='The date registration of contact person of this company')]
+    description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
+    role: Annotated[
+        str, Path(title='The role for example administrator or moderator of contact person of this company')]
 
 
 class ClientResponse(ClientBase):
@@ -88,3 +97,12 @@ class ServiceResponse(ServiceBase):
 
 class ServiceCreate(ServiceBase):
     pass
+
+
+class HistoryResponse(BaseModel):
+    licence_id: Annotated[int, Path(title="A link to the licence with this ID", ge=1)]
+    prev_status: Annotated[Status, Path(title="The previous status(active or inactive) of this licence")]
+    next_status: Annotated[Status, Path(title="The changed status(active or inactive) of this licence")]
+    date: Annotated[datetime, Path(title="Date change of this licence")]
+    date_end: Annotated[datetime, Path(title="Date end of this licence")]
+    client_id: Annotated[int, Path(title="Client ID who edit this licence", ge=1)]
