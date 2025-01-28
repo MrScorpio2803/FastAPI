@@ -135,7 +135,7 @@ async def get_licence(licence_id: int, db: Session = Depends(get_db)):
     licence = db.query(Licence).filter(Licence.id == licence_id).first()
     if licence is None:
         raise HTTPException(status_code=404, detail="Licence not found")
-    client = db.query(Client).filter(int(Client.id) == licence.client_id).first()
+    client = db.query(Client).filter(Client.id == licence.client_id).first()
     date_start = licence.date_begin
     date_end = licence.date_end
     changes = db.query(History).filter(History.licence_id == licence_id).all()
