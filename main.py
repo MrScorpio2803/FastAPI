@@ -2,16 +2,16 @@ from fastapi import FastAPI, Path, Query, Depends, HTTPException, Response
 from typing import Annotated, List, Dict, Optional
 import json
 
-
 from sqlalchemy import func, select
 
 from database import Base, engine, session_local
 from sqlalchemy.orm import Session, joinedload
 from models import Client, Licence, Object, Service, History, Note
 from datetime import datetime
-from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, NoteCreate, NoteResponse, ObjectResponse, \
+from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, NoteCreate, NoteResponse, \
+    ObjectResponse, \
     ObjectCreate, \
-    ServiceResponse, ServiceCreate, HistoryResponse
+    ServiceResponse, ServiceCreate, HistoryResponse, Status
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,7 @@ async def create_note(note: NoteCreate, db: Session = Depends(get_db)) -> Respon
     return Response(content=note_resp.json(), status_code=201, media_type='application/json',
                     headers={"Location": f"/clients/{note_resp.client_id}"})
 
+
 @app.get('/clients/{client_id}')
 async def get_client(client_id: int, db: Session = Depends(get_db)) -> Response:
     client = db.query(Client).filter(Client.id == client_id).options(joinedload(Client.objects)).first()
@@ -103,15 +104,11 @@ async def get_client(client_id: int, db: Session = Depends(get_db)) -> Response:
                 history_dict['history'].append(result)
             final_history.append(history_dict)
     licences_json = [licence.dict() for licence in licence_list]
-    print(789)
+
     for licence in licences_json:
-        print(licence['status'].value)
         licence['status'] = licence['status'].value
         licence['date_begin'] = licence['date_begin'].isoformat()
         licence['date_end'] = licence['date_end'].isoformat()
-        print(licence)
-    print(licences_json)
-    print(final_history)
     data = {
         'id': client.id,
         'company': client.nameCompany,
@@ -130,6 +127,7 @@ async def get_client(client_id: int, db: Session = Depends(get_db)) -> Response:
 
     return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 
+
 @app.get('/companies')
 async def get_clients(db: Session = Depends(get_db)) -> Response:
     query = select(Client.nameCompany, Client.tin).distinct()
@@ -142,8 +140,109 @@ async def get_clients(db: Session = Depends(get_db)) -> Response:
             'tin': data[1],
         }
         result.append(combined_data)
-    print(result)
-    return result
+    data = {
+        'companies': result
+    }
+
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+
+
+@app.get('/searchClients')
+async def get_searched_clients(company: Optional[str] = None, tin: Optional[str] = None, contact: Optional[str] = None,
+                               db: Session = Depends(get_db)) -> Response:
+    query = db.query(Client).options(joinedload(Client.notes))
+    if company:
+        query = query.filter(Client.nameCompany.ilike(f"%{company}%"))
+    if tin:
+        query = query.filter(Client.tin.ilike(f"%{tin}%"))
+    if contact:
+        query = query.filter(Client.contact.ilike(f"%{contact}%"))
+    Clients = query.all()
+    client_list = [ClientResponse.from_orm(client).dict() for client in Clients]
+    for client in client_list:
+        client['date_registration'] = client['date_registration'].isoformat()
+    if len(client_list) > 0:
+        data = {
+            'clients': client_list
+        }
+        return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+    else:
+        data = {
+            'message': 'Not users for your request'
+        }
+        return Response(content=json.dumps(data), status_code=404, media_type='application/json')
+
+
+@app.get('/searchLicences')
+async def get_searched_licence(client_id: Optional[int] = None, status: Optional[str] = None, date_end: Optional[str] = None,
+                               db: Session = Depends(get_db)) -> Response:
+    date_end_edit = datetime.strptime(date_end, "%Y-%m-%dT%H:%M:%S.%f")
+    query = db.query(Licence)
+    if client_id:
+        query = query.filter(Licence.client_id == client_id)
+    if status:
+        query = query.filter(Licence.status == Status[status])
+    if date_end:
+        query = query.filter(Licence.date_end == date_end_edit)
+    Licences = query.all()
+    licence_list = [LicenceResponse.from_orm(licence) for licence in Licences]
+    for licence in licence_list:
+
+        licence.status = licence.status.value
+        licence.date_end = licence.date_end.isoformat()
+        licence.date_begin = licence.date_begin.isoformat()
+    licence_json = [licence.dict() for licence in licence_list]
+    if len(licence_list) > 0:
+        data = {
+            'licences': licence_json
+        }
+        return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+    else:
+        data = {
+            'message': 'Not users for your request'
+        }
+        return Response(content=json.dumps(data), status_code=404, media_type='application/json')
+
+
+@app.get('/objects')
+async def get_objects(db: Session = Depends(get_db)) -> Response:
+    query = select(Client.id)
+    ids = db.execute(query).scalars().all()
+    result = []
+    for obj_id in ids:
+        objects = db.query(Object).filter(Object.client_id == obj_id).options(joinedload(Object.services))
+        obj_list = {obj_id: []}
+        for obj in objects:
+            services_list = [ServiceResponse.from_orm(service).dict() for service in obj.services]
+            obj_cur = {
+                'object_id': obj.id,
+                'name': obj.name,
+                'services': services_list
+            }
+            obj_list[obj_id].append(obj_cur)
+        result.append(obj_list)
+    data = {
+        'objects': result
+    }
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+
+
+@app.get('/services')
+async def get_services(db: Session = Depends(get_db)) -> Response:
+    query = select(Client.id)
+    ids = db.execute(query).scalars().all()
+    result = []
+    for obj_id in ids:
+        objects = db.query(Object).filter(Object.client_id == obj_id).options(joinedload(Object.services))
+        service_list = {obj_id: []}
+        for obj in objects:
+            services_list = [ServiceResponse.from_orm(service).dict() for service in obj.services]
+            service_list[obj_id] = services_list
+        result.append(service_list)
+    data = {
+        'objects': result
+    }
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 
 
 @app.put('/clients/{client_id}')
@@ -187,26 +286,26 @@ async def create_object(object: ObjectCreate, db: Session = Depends(get_db)) -> 
 
 @app.get('/objects/{object_id}')
 async def get_object(object_id: int, db: Session = Depends(get_db)) -> Response:
-    object = db.query(Object).filter(Object.id == object_id).options(joinedload(Object.services)).first()
-    if object is None:
+    obj = db.query(Object).filter(Object.id == object_id).options(joinedload(Object.services)).first()
+    if obj is None:
         raise HTTPException(status_code=404, detail="Object not found")
-    services_list = [ServiceResponse.from_orm(service).dict() for service in object.services]
+    services_list = [ServiceResponse.from_orm(service).dict() for service in obj.services]
     data = {
-        'id': object.id,
-        'name': object.name,
-        'client_id': object.client_id,
+        'id': obj.id,
+        'name': obj.name,
+        'client_id': obj.client_id,
         'services': services_list
     }
     return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 
 
 @app.put('/objects/{object_id}')
-async def edit_object(object_id: int, object: ObjectCreate, db: Session = Depends(get_db)) -> Response:
+async def edit_object(object_id: int, obj: ObjectCreate, db: Session = Depends(get_db)) -> Response:
     cur_object = db.query(Object).filter(Object.id == object_id).first()
     if not cur_object:
         raise HTTPException(status_code=404, detail='Object not found')
-    cur_object.name = object.name
-    cur_object.client_id = object.client_id
+    cur_object.name = obj.name
+    cur_object.client_id = obj.client_id
     db.commit()
     db.refresh(cur_object)
     cur_object = ObjectResponse.from_orm(cur_object)
@@ -215,10 +314,10 @@ async def edit_object(object_id: int, object: ObjectCreate, db: Session = Depend
 
 @app.delete('/objects/{object_id}')
 async def delete_object(object_id: int, db: Session = Depends(get_db)) -> Response:
-    object = db.query(Object).filter(Object.id == object_id).first()
-    if not object:
+    obj = db.query(Object).filter(Object.id == object_id).first()
+    if not obj:
         raise HTTPException(status_code=404, detail='Object not found')
-    db.delete(object)
+    db.delete(obj)
     db.commit()
     return Response(status_code=204)
 
@@ -319,6 +418,20 @@ async def get_licence(licence_id: int, db: Session = Depends(get_db)) -> Respons
     return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 
 
+@app.get('/licence')
+async def get_licences(db: Session = Depends(get_db)) -> Response:
+    licences = db.query(Licence).all()
+    licences_list = [LicenceResponse.from_orm(licence) for licence in licences]
+    for licence in licences_list:
+        licence.status = licence.status.value
+        licence.date_end = licence.date_end.isoformat()
+        licence.date_begin = licence.date_begin.isoformat()
+    licence_json = [licence.dict() for licence in licences_list]
+    data = {
+        'licences': licence_json
+    }
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+
 @app.put('/licences/{licence_id}')
 async def edit_licence(licence_id: int, licence: LicenceCreate, db: Session = Depends(get_db)) -> Response:
     cur_licence = db.query(Licence).filter(Licence.id == licence_id).first()
@@ -333,11 +446,11 @@ async def edit_licence(licence_id: int, licence: LicenceCreate, db: Session = De
                 client = db.query(Client).filter(Client.id == cur_licence.client_id).first()
                 if client:
                     new_history_entry = History(
-                    licence_id=licence_id,
-                    prev_status=cur_licence.status,
-                    next_status=licence.status,
-                    date = datetime.now().isoformat(),
-                    client_id=licence.client_id,
+                        licence_id=licence_id,
+                        prev_status=cur_licence.status,
+                        next_status=licence.status,
+                        date=datetime.now().isoformat(),
+                        client_id=licence.client_id,
                     )
                     db.add(new_history_entry)
                     db.commit()

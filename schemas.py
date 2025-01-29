@@ -24,7 +24,6 @@ class ClientBase(BaseModel):
     status: Annotated[str, Path(title="The status(active or inactive) of the contact person of this company")]
     count_licence: Annotated[int, Path(title='The count of licences of contact person of this company', ge=0)]
     date_registration: Annotated[datetime, Path(title='The date registration of contact person of this company')]
-    description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
     role: Annotated[
         str, Path(title='The role for example administrator or moderator of contact person of this company')]
 
@@ -73,6 +72,7 @@ class ClientResponse(ClientBase):
     notes: Annotated[
         List[str], Path(title='The notes of the contact person of this company')
     ]
+
     class Config:
         from_attributes = True
 
@@ -89,8 +89,10 @@ class NoteCreate(NoteBase):
 
 class NoteResponse(NoteBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
+
     class Config:
         from_attributes = True
+
 
 class LicenceResponse(LicenceBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]

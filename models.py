@@ -32,6 +32,7 @@ class Note(Base):
     text = Column(String)
     client = relationship('Client', back_populates='notes')
 
+
 class Object(Base):
     __tablename__ = "objects"
 
