@@ -59,8 +59,8 @@ class History(Base):
     __tablename__ = "history"
 
     id = Column(Integer, primary_key=True, index=True)
-    licence_id = Column(Integer, ForeignKey('licences.id'))
+    licence_id = Column(Integer)
     prev_status = Column(Enum(Status))
     next_status = Column(Enum(Status))
     date = Column(DateTime, index=True)
-    client_id = Column(Integer, ForeignKey('clients.id'))
+    client_id = Column(Integer)

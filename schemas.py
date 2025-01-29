@@ -22,7 +22,7 @@ class ClientBase(BaseModel):
     num_phone: Annotated[
         str, Path(title="The phone of the contact person of this company", min_length=11, max_length=12)]
     status: Annotated[str, Path(title="The status(active or inactive) of the contact person of this company")]
-    count_licence: Annotated[int, Path(title='The count of licences of contact person of this company')]
+    count_licence: Annotated[int, Path(title='The count of licences of contact person of this company', ge=0)]
     date_registration: Annotated[datetime, Path(title='The date registration of contact person of this company')]
     description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
     role: Annotated[
@@ -34,15 +34,15 @@ class LicenceBase(BaseModel):
     status: Annotated[Status, Path(title="The status(active or inactive) of this licence")]
     date_begin: Annotated[datetime, Path(title="Date begin of this licence")]
     date_end: Annotated[datetime, Path(title="Date end of this licence")]
-    service_id: int
+    service_id: Annotated[int, Path(title="A link to the service with this ID", ge=1)]
 
 
 class ObjectBase(BaseStruct):
-    client_id: int
+    client_id: Annotated[int, Path(title="A link to the client with this ID", ge=1)]
 
 
 class ServiceBase(BaseStruct):
-    object_id: int
+    object_id: Annotated[int, Path(title="A link to the object with this ID", ge=1)]
 
 
 class ObjectResponse(ObjectBase):
@@ -65,9 +65,12 @@ class ClientCreate(BaseModel):
         str, Path(title='The role for example administrator or moderator of contact person of this company')]
 
 
+class ClientEdit(ClientBase):
+    pass
+
+
 class ClientResponse(ClientBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
-    objects: List[ObjectResponse] = []
 
     class Config:
         from_attributes = True
