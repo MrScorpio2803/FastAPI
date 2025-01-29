@@ -1,14 +1,15 @@
 from fastapi import FastAPI, Path, Query, Depends, HTTPException, Response
-from typing import Annotated, List, Dict
+from typing import Annotated, List, Dict, Optional
 import json
 
-from sqlalchemy import func
+
+from sqlalchemy import func, select
 
 from database import Base, engine, session_local
 from sqlalchemy.orm import Session, joinedload
-from models import Client, Licence, Object, Service, History
+from models import Client, Licence, Object, Service, History, Note
 from datetime import datetime
-from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, ClientEdit, ObjectResponse, \
+from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, NoteCreate, NoteResponse, ObjectResponse, \
     ObjectCreate, \
     ServiceResponse, ServiceCreate, HistoryResponse
 import logging
@@ -51,7 +52,7 @@ async def create_client(client: ClientCreate, db: Session = Depends(get_db)) -> 
     new_client = Client(nameCompany=client.nameCompany, tin=client.tin, contact=client.contact,
                         email=client.email, num_phone=client.num_phone, status=status,
                         count_licence=count_licences, date_registration=client.date_registration,
-                        role=client.role, description=client.description)
+                        role=client.role)
     db.add(new_client)
     db.commit()
     db.refresh(new_client)
@@ -60,28 +61,89 @@ async def create_client(client: ClientCreate, db: Session = Depends(get_db)) -> 
                     headers={"Location": f"/clients/{client_resp.id}"})
 
 
+@app.post('/clients/note')
+async def create_note(note: NoteCreate, db: Session = Depends(get_db)) -> Response:
+    new_note = Note(client_id=note.client_id, name=note.name, text=note.text)
+    db.add(new_note)
+    db.commit()
+    db.refresh(new_note)
+    note_resp = NoteResponse.from_orm(new_note)
+    return Response(content=note_resp.json(), status_code=201, media_type='application/json',
+                    headers={"Location": f"/clients/{note_resp.client_id}"})
+
 @app.get('/clients/{client_id}')
 async def get_client(client_id: int, db: Session = Depends(get_db)) -> Response:
     client = db.query(Client).filter(Client.id == client_id).options(joinedload(Client.objects)).first()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    objects_list = [ObjectResponse.from_orm(obj).dict() for obj in client.objects]
+    licences = db.query(Licence).filter(Licence.client_id == client_id).all()
+    licence_list = [LicenceResponse.from_orm(licence) for licence in licences]
+    notes = db.query(Note).filter(Note.client_id == client_id).all()
+    notes_list = [NoteResponse.from_orm(note).dict() for note in notes]
+    query = select(Client.contact).where(client.nameCompany == Client.nameCompany)
+    contacts = db.execute(query).scalars().all()
+    final_history = []
+    if len(licence_list) != 0:
+        for licence in licence_list:
+            histories = db.query(History).filter(History.client_id == client_id, History.licence_id == licence.id).all()
+            print(123)
+            histories_list = [HistoryResponse.from_orm(history) for history in histories]
+            print(456)
+            history_dict = {'licence_id': licence.id, 'history': []}
+            for history in histories_list:
+                prev_status = history.prev_status
+                next_status = history.next_status
+                date = history.date
+
+                result = {
+                    'next_status': next_status.value,
+                    'prev_status': prev_status.value,
+                    'date': date.isoformat(),
+                }
+                history_dict['history'].append(result)
+            final_history.append(history_dict)
+    licences_json = [licence.dict() for licence in licence_list]
+    print(789)
+    for licence in licences_json:
+        print(licence['status'].value)
+        licence['status'] = licence['status'].value
+        licence['date_begin'] = licence['date_begin'].isoformat()
+        licence['date_end'] = licence['date_end'].isoformat()
+        print(licence)
+    print(licences_json)
+    print(final_history)
     data = {
         'id': client.id,
         'company': client.nameCompany,
         'tin': client.tin,
-        'contact': client.contact,
+        'contact': contacts,
         'email': client.email,
         'num_phone': client.num_phone,
         'status': client.status.value,
         'count_licence': client.count_licence,
         'date_registration': client.date_registration.isoformat(),
-        'description': client.description,
         'role': client.role,
-        'objects': objects_list
+        'licences': licences_json,
+        'history': final_history,
+        'notes': notes_list
     }
 
     return Response(content=json.dumps(data), status_code=200, media_type='application/json')
+
+@app.get('/companies')
+async def get_clients(db: Session = Depends(get_db)) -> Response:
+    query = select(Client.nameCompany, Client.tin).distinct()
+    companies = db.execute(query).fetchall()
+    companies_list = [(row.nameCompany, row.tin) for row in companies]
+    result = []
+    for data in companies_list:
+        combined_data = {
+            'company': data[0],
+            'tin': data[1],
+        }
+        result.append(combined_data)
+    print(result)
+    return result
 
 
 @app.put('/clients/{client_id}')
@@ -274,7 +336,7 @@ async def edit_licence(licence_id: int, licence: LicenceCreate, db: Session = De
                     licence_id=licence_id,
                     prev_status=cur_licence.status,
                     next_status=licence.status,
-                    date = datetime.now(),
+                    date = datetime.now().isoformat(),
                     client_id=licence.client_id,
                     )
                     db.add(new_history_entry)

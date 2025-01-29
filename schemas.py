@@ -60,7 +60,6 @@ class ClientCreate(BaseModel):
     num_phone: Annotated[
         str, Path(title="The phone of the contact person of this company", min_length=11, max_length=12)]
     date_registration: Annotated[datetime, Path(title='The date registration of contact person of this company')]
-    description: Annotated[Optional[str], Path(title='The date registration of contact person of this company')]
     role: Annotated[
         str, Path(title='The role for example administrator or moderator of contact person of this company')]
 
@@ -71,10 +70,27 @@ class ClientEdit(ClientBase):
 
 class ClientResponse(ClientBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
-
+    notes: Annotated[
+        List[str], Path(title='The notes of the contact person of this company')
+    ]
     class Config:
         from_attributes = True
 
+
+class NoteBase(BaseModel):
+    client_id: Annotated[int, Path(title="The client with this ID", ge=1)]
+    name: Annotated[str, "name of the note of the client"]
+    text: Annotated[str, Path(title="The text of the note of the client", min_length=10, max_length=100)]
+
+
+class NoteCreate(NoteBase):
+    pass
+
+
+class NoteResponse(NoteBase):
+    id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
+    class Config:
+        from_attributes = True
 
 class LicenceResponse(LicenceBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
@@ -107,5 +123,7 @@ class HistoryResponse(BaseModel):
     prev_status: Annotated[Status, Path(title="The previous status(active or inactive) of this licence")]
     next_status: Annotated[Status, Path(title="The changed status(active or inactive) of this licence")]
     date: Annotated[datetime, Path(title="Date change of this licence")]
-    date_end: Annotated[datetime, Path(title="Date end of this licence")]
     client_id: Annotated[int, Path(title="Client ID who edit this licence", ge=1)]
+
+    class Config:
+        from_attributes = True

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime, ARRAY
 from sqlalchemy.orm import relationship
 from database import Base
 from schemas import Status
@@ -18,10 +18,19 @@ class Client(Base):
     status = Column(Enum(Status))
     count_licence = Column(Integer)
     date_registration = Column(DateTime)
-    description = Column(String)
     role = Column(String)
     objects = relationship('Object', back_populates='client')
+    notes = relationship('Note', back_populates='client')
 
+
+class Note(Base):
+    __tablename__ = "notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey('clients.id'))
+    name = Column(String)
+    text = Column(String)
+    client = relationship('Client', back_populates='notes')
 
 class Object(Base):
     __tablename__ = "objects"
