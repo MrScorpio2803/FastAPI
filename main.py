@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from database import Base, engine, session_local
 from sqlalchemy.orm import Session, joinedload
 from models import Client, Licence, Object, Service, History, Note
-from datetime import datetime
+from datetime import datetime, timedelta
 from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, NoteCreate, NoteResponse, \
     ObjectResponse, \
     ObjectCreate, \
@@ -28,12 +28,89 @@ def get_db():
         db.close()
 
 
-@app.get('/general-statistics', response_model=Dict)
-async def get_general_statistics(id: int = Query(30, title="Amount of days for the forecast", ge=1),
+def get_active_licenses_count(db_session, start_date, end_date, period: str):
+    query = db_session.query(
+        func.count(Licence.id).label('count_licences_count')
+    ).filter(
+        Licence.status == 'active',
+        Licence.date_begin >= start_date,
+        Licence.date_end <= end_date
+    ).group_by(
+        func.date_trunc(period, Licence.date_begin)
+    ).all()
+
+    return query
+
+
+def get_new_clients(db_session, start_date, end_date, period: str):
+    query = db_session.query(
+        func.count(Client.id).label('count_new_clients')
+    ).filter(
+        Client.date_registration >= start_date,
+        Client.date_registration <= end_date
+    ).group_by(
+        func.date_trunc(period, Licence.date_begin)
+    ).all()
+
+    return query
+
+
+def edit_licences(array):
+    for licence in array:
+        licence.date_end = licence.date_end.isoformat()
+        licence.date_begin = licence.date_begin.isoformat()
+        licence.status = licence.status.value
+    return array
+
+@app.get('/general-statistics')
+async def get_general_statistics(days: int = Query(30, title="Amount of days for the forecast", ge=1), period: str = Query('week', title="Period of search"),
+                                 start_date: datetime = Query(datetime.now(), example="2025-01-01T00:00:00"),
                                  db: Session = Depends(get_db)):
+    translate = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 366
+    }
+    days_check = translate[period]
     date_now = datetime.now()
-    clients = db.query(Client).filter(Client.id == id).first()
-    return {'data': clients}
+    month = date_now.month
+    print(month)
+    licences_active = db.query(Licence).filter(Licence.date_end >= date_now, Licence.status == 'active').all()
+    licences_list = [LicenceResponse.from_orm(licence) for licence in licences_active]
+    licences_list = edit_licences(licences_list)
+    count_active_licences = len(licences_list)
+    licence_inactive = db.query(Licence).filter(Licence.date_end >= date_now, Licence.status == 'inactive').all()
+    licences_list_inactive = [LicenceResponse.from_orm(licence) for licence in licence_inactive]
+    licences_list_inactive = edit_licences(licences_list_inactive)
+    count_inactive_licences = len(licences_list_inactive)
+    licences_expiring = db.query(Licence).filter(func.extract('month', Licence.date_end) == month and Licence.date_end >= date_now).all()
+    licences_list_expiring = [LicenceResponse.from_orm(licence) for licence in licences_expiring]
+    licences_list_expiring = edit_licences(licences_list_expiring)
+    count_expiring_licences = len(licences_list_expiring)
+    licences_expired = db.query(Licence).filter(Licence.date_end < date_now).all()
+    licences_list_expired = [LicenceResponse.from_orm(licence) for licence in licences_expired]
+    licences_list_expired = edit_licences(licences_list_expired)
+    count_expiring_licences = len(licences_list_expired)
+    end_date_check = start_date  + timedelta(days=days_check)
+    start_date_check = start_date
+    licenses_count = get_active_licenses_count(db, start_date_check, end_date_check, period)
+    counts = [licence_count.count_licences_count for licence_count in licenses_count]
+    changes = [0]  # Начинаем с 0 изменения для первого периода
+    for i in range(1, len(counts)):
+        change = counts[i] - counts[i - 1]  # Разница с предыдущим периодом
+        changes.append(change)
+    date_check = datetime.now() + timedelta(days=days_check)
+    clients_count = get_new_clients(db, start_date_check, end_date_check, period)
+    changes_clients = [0]
+    for i in range(1, len(clients_count)):
+        changes_client = clients_count[i] - clients_count[i - 1]  # Разница с предыдущим периодом
+        changes_clients.append(changes_client)
+    licence_inactive_expiring_soon = db.query(Licence).filter(Licence.date_end >= date_now, Licence.date_end <= date_check).all()
+    licences_list_expiring_soon = [LicenceResponse.from_orm(licence) for licence in licence_inactive_expiring_soon]
+    licences_list_expiring_soon = edit_licences(licences_list_expiring_soon)
+    licences_expiring_soon = [licence.dict() for licence in licences_list_expiring_soon]
+
 
 
 @app.post('/clients')

@@ -69,9 +69,7 @@ class ClientEdit(ClientBase):
 
 class ClientResponse(ClientBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
-    notes: Annotated[
-        List[str], Path(title='The notes of the contact person of this company')
-    ]
+
 
     class Config:
         from_attributes = True
