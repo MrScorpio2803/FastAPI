@@ -6,12 +6,14 @@ from sqlalchemy import func, select
 
 from database import Base, engine, session_local
 from sqlalchemy.orm import Session, joinedload
-from models import Client, Licence, Object, Service, History, Note
+from models import Client, Licence, Object, Service, History, Note, ClientEdits
 from datetime import datetime, timedelta
+from publisher import send_license_expiration_notification
+
 from schemas import LicenceResponse, LicenceCreate, ClientResponse, ClientCreate, NoteCreate, NoteResponse, \
     ObjectResponse, \
     ObjectCreate, \
-    ServiceResponse, ServiceCreate, HistoryResponse, Status
+    ServiceResponse, ServiceCreate, HistoryResponse, Status, EditsResponse, LicenseInfo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ def get_new_clients(db_session, start_date, end_date, period: str):
         Client.date_registration >= start_date,
         Client.date_registration <= end_date
     ).group_by(
-        func.date_trunc(period, Licence.date_begin)
+        func.date_trunc(period, Client.date_registration)
     ).all()
 
     return query
@@ -63,9 +65,9 @@ def edit_licences(array):
     return array
 
 @app.get('/general-statistics')
-async def get_general_statistics(days: int = Query(30, title="Amount of days for the forecast", ge=1), period: str = Query('week', title="Period of search"),
+async def get_general_statistics(period: str = Query('week', title="Period of search"),
                                  start_date: datetime = Query(datetime.now(), example="2025-01-01T00:00:00"),
-                                 db: Session = Depends(get_db)):
+                                 db: Session = Depends(get_db)) -> Response:
     translate = {
         'day': 1,
         'week': 7,
@@ -75,7 +77,6 @@ async def get_general_statistics(days: int = Query(30, title="Amount of days for
     days_check = translate[period]
     date_now = datetime.now()
     month = date_now.month
-    print(month)
     licences_active = db.query(Licence).filter(Licence.date_end >= date_now, Licence.status == 'active').all()
     licences_list = [LicenceResponse.from_orm(licence) for licence in licences_active]
     licences_list = edit_licences(licences_list)
@@ -91,28 +92,59 @@ async def get_general_statistics(days: int = Query(30, title="Amount of days for
     licences_expired = db.query(Licence).filter(Licence.date_end < date_now).all()
     licences_list_expired = [LicenceResponse.from_orm(licence) for licence in licences_expired]
     licences_list_expired = edit_licences(licences_list_expired)
-    count_expiring_licences = len(licences_list_expired)
-    end_date_check = start_date  + timedelta(days=days_check)
+    count_expired_licences = len(licences_list_expired)
+    end_date_check = start_date + timedelta(days=days_check)
     start_date_check = start_date
     licenses_count = get_active_licenses_count(db, start_date_check, end_date_check, period)
     counts = [licence_count.count_licences_count for licence_count in licenses_count]
-    changes = [0]  # Начинаем с 0 изменения для первого периода
+    changes = []
     for i in range(1, len(counts)):
-        change = counts[i] - counts[i - 1]  # Разница с предыдущим периодом
+        change = counts[i] - counts[i - 1]
         changes.append(change)
     date_check = datetime.now() + timedelta(days=days_check)
     clients_count = get_new_clients(db, start_date_check, end_date_check, period)
-    changes_clients = [0]
+    changes_clients = []
     for i in range(1, len(clients_count)):
-        changes_client = clients_count[i] - clients_count[i - 1]  # Разница с предыдущим периодом
+        changes_client = clients_count[i] - clients_count[i - 1]
         changes_clients.append(changes_client)
     licence_inactive_expiring_soon = db.query(Licence).filter(Licence.date_end >= date_now, Licence.date_end <= date_check).all()
     licences_list_expiring_soon = [LicenceResponse.from_orm(licence) for licence in licence_inactive_expiring_soon]
     licences_list_expiring_soon = edit_licences(licences_list_expiring_soon)
     licences_expiring_soon = [licence.dict() for licence in licences_list_expiring_soon]
+    data = {
+        'amount_active_licences': count_active_licences,
+        'amount_inactive_licences': count_inactive_licences,
+        'amount_expiring_licences': count_expiring_licences,
+        'amount_expired_licences': count_expired_licences,
+        'graphic_licence': counts,
+        'graghic_clients': clients_count,
+        'table_expiring_licences_soon': licences_expiring_soon
+    }
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 
 
-
+@app.get('/last-activities')
+async def get_last_activities(db: Session = Depends(get_db)) -> Response:
+    check_date = datetime.now() - timedelta(days=5)
+    activate_licences = db.query(History).filter(History.next_status == Status['active'], History.date >= check_date).all()
+    activate_licences = [HistoryResponse.from_orm(licence) for licence in activate_licences]
+    inactivate_licences = db.query(History).filter(History.next_status == Status['inactive'], History.date >= check_date).all()
+    inactivate_licences = [HistoryResponse.from_orm(licence) for licence in inactivate_licences]
+    new_clients = db.query(Client).filter(Client.date_registration >= check_date).all()
+    new_clients = [ClientResponse.from_orm(client) for client in new_clients]
+    recent_clients_edits = db.query(ClientEdits).filter(ClientEdits.date >= check_date).all()
+    recent_clients_edits = [EditsResponse.from_orm(edit) for edit in recent_clients_edits]
+    activate_licences_list = [{'client': history.client_id, 'date': history.date.isoformat()} for history in activate_licences]
+    inactivate_licences_list = [{'client': history.client_id, 'date': history.date.isoformat()} for history in inactivate_licences]
+    new_clients_list = [{'client_id': client.id, 'date_registration': client.date_registration.isoformat()} for client in new_clients]
+    recent_clients_edits_list = [{'client_id': edit.client_id, 'edit_date': edit.date.isoformat()} for edit in recent_clients_edits]
+    data = {
+        'recent_edits': recent_clients_edits_list,
+        'activation_licences': activate_licences_list,
+        'inactivation_licences': inactivate_licences_list,
+        'recent_clients': new_clients_list
+    }
+    return Response(content=json.dumps(data), status_code=200, media_type='application/json')
 @app.post('/clients')
 async def create_client(client: ClientCreate, db: Session = Depends(get_db)) -> Response:
     max_id = db.query(func.max(Client.id)).scalar()
@@ -332,10 +364,13 @@ async def edit_client(client_id: int, client: ClientCreate, db: Session = Depend
     cur_client.contact = client.contact
     cur_client.email = client.email
     cur_client.num_phone = client.num_phone
-    cur_client.description = client.description
     cur_client.date_registration = client.date_registration
+    cur_client.role = client.role
+    new_edit = ClientEdits(client_id=client_id, date=datetime.now())
+    db.add(new_edit)
     db.commit()
     db.refresh(cur_client)
+    db.refresh(new_edit)
     cur_client = ClientResponse.from_orm(cur_client)
     return Response(content=cur_client.json(), status_code=200, media_type='application/json')
 
@@ -599,3 +634,14 @@ async def delete_licence(licence_id: int, db: Session = Depends(get_db)) -> Resp
     db.delete(cur_licence)
     db.commit()
     return Response(status_code=204)
+
+
+@app.post("/notify_expiration/")
+async def notify_expiration(license_info: LicenseInfo):
+    try:
+        # Публикуем сообщение о сроке действия лицензии
+        send_license_expiration_notification(license_info.dict())
+        return {"message": "Notification sent successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Annotated, List
+from typing import Optional, Annotated, List, Dict
 from datetime import datetime
 from fastapi import Path
 import enum
@@ -70,7 +70,6 @@ class ClientEdit(ClientBase):
 class ClientResponse(ClientBase):
     id: Annotated[int, Path(title="Unique identificator for items of models of this class.")]
 
-
     class Config:
         from_attributes = True
 
@@ -127,3 +126,18 @@ class HistoryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EditsResponse(BaseModel):
+    date: Annotated[datetime, Path(title="Date change of this licence")]
+    client_id: Annotated[int, Path(title="Client ID who edit this licence", ge=1)]
+
+    class Config:
+        from_attributes = True
+
+
+class LicenseInfo(BaseModel):
+    client_id: int
+    license_id: int
+    expiry_date: datetime
+    email: str

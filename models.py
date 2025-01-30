@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime, ARRAY
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
 from schemas import Status
@@ -74,3 +74,11 @@ class History(Base):
     next_status = Column(Enum(Status))
     date = Column(DateTime, index=True)
     client_id = Column(Integer)
+
+
+class ClientEdits(Base):
+    __tablename__ = "editions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer)
+    date = Column(DateTime, index=True)
