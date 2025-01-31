@@ -1,10 +1,9 @@
-# app/publisher.py
+
 
 import pika
 import json
 
 
-# Устанавливаем соединение с RabbitMQ
 def get_connection():
     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     return connection

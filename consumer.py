@@ -1,11 +1,11 @@
-# app/consumer.py
+
 
 import pika
 import json
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from pydantic import EmailStr
 import asyncio
-from email_sender import send_email  # Импортируем функцию для отправки email
+from email_sender import send_email
 
 
 # Настройки RabbitMQ
@@ -29,10 +29,8 @@ def consume_license_expiration():
     connection = get_connection()
     channel = connection.channel()
 
-    # Объявляем очередь
     channel.queue_declare(queue='license_expiration')
 
-    # Подписываемся на очередь и начинаем получать сообщения
     channel.basic_consume(queue='license_expiration', on_message_callback=on_license_expiration)
     print('Waiting for messages. To exit press CTRL+C')
     channel.start_consuming()
